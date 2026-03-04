@@ -140,7 +140,7 @@ case "$ACTION" in
         if [[ -n "$ACTION" ]]; then
             ssh -t "$HOST" "screen -S $ACTION -xRR"
         else
-            ssh -t "$HOST" 'screen -Rd' 2>/dev/null || ssh -t "$HOST" 'screen -R'
+            ssh -t "$HOST" 'screen -Rd'
         fi
         ;;
 esac
