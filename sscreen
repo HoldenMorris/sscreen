@@ -24,6 +24,7 @@ _sscreen() {
 complete -F _sscreen sscreen
 '
 SSH_CONFIG="$HOME/.ssh/config"
+SSH_OPTS="-o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no"
 load_hosts() {
     grep -i "^Host " "$SSH_CONFIG" | awk '{print $2}' | grep -v '*'
 }
@@ -46,10 +47,13 @@ install_sscreen() {
 ACTION=""
 HOST=""
 if [[ $# -eq 0 ]]; then
-    echo "Usage: sscreen <host> [connect|list|run]"
-    echo "       sscreen list             # list screens on all SSH hosts"
-    echo "       sscreen hosts           # show SSH config hosts"
-    echo "       sscreen --install       # install sscreen and completion"
+    echo "Usage: sscreen <host> [connect|attach|list|run|kill]"
+    echo "       sscreen <host> attach <screen>    # attach to specific screen"
+    echo "       sscreen <host> run <name> <cmd>  # start named screen with command"
+    echo "       sscreen <host> kill <screen>     # kill a screen"
+    echo "       sscreen list                      # list screens on all hosts"
+    echo "       sscreen hosts                     # show SSH config hosts"
+    echo "       sscreen --install                 # install sscreen and completion"
     exit 1
 fi
 if [[ $# -eq 1 ]]; then
@@ -63,10 +67,14 @@ if [[ $# -eq 1 ]]; then
             exit 0
             ;;
         list)
-            echo "Listing screens on all SSH config hosts..."
             for h in $(load_hosts); do
-                echo "=== $h ==="
-                ssh -t "$h" 'screen -ls' 2>/dev/null
+                output=$(timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -t "$h" 'screen -ls' 2>&1)
+                ret=$?
+                clean_output=$(echo "$output" | tr -d '\r' | grep -v "Pseudo-terminal will not be allocated")
+                if echo "$clean_output" | grep -q "screens on"; then
+                    echo "=== $h ==="
+                    echo "$clean_output"
+                fi
             done
             exit 0
             ;;
@@ -85,6 +93,17 @@ case "$ACTION" in
         fi
         ssh -t "$HOST" 'screen -Rd' 2>/dev/null || ssh -t "$HOST" 'screen -R'
         ;;
+    a|attach)
+        if ! get_host "$HOST" >/dev/null; then
+            echo "Error: Host '$HOST' not found in $SSH_CONFIG"
+            exit 1
+        fi
+        if [[ -z "$2" ]]; then
+            echo "Usage: sscreen <host> attach <screen-name|pid>"
+            exit 1
+        fi
+        ssh -t "$HOST" "screen -dr $2"
+        ;;
     l|list)
         if ! get_host "$HOST" >/dev/null 2>&1; then
             echo "Error: Host '$HOST' not found in $SSH_CONFIG"
@@ -98,19 +117,34 @@ case "$ACTION" in
             exit 1
         fi
         shift 2
-        if [[ $# -eq 0 ]]; then
-            echo "Error: 'run' requires a command argument"
-            echo "Usage: sscreen <host> run <command>"
+        if [[ $# -lt 2 ]]; then
+            echo "Usage: sscreen <host> run <name> <command>"
             exit 1
         fi
-        ssh -t "$HOST" "screen -S main $*"
+        screen_name="$1"
+        shift
+        ssh -t "$HOST" "screen -S $screen_name $*"
+        ;;
+    k|kill)
+        if ! get_host "$HOST" >/dev/null; then
+            echo "Error: Host '$HOST' not found in $SSH_CONFIG"
+            exit 1
+        fi
+        if [[ -z "$2" ]]; then
+            echo "Usage: sscreen <host> kill <screen-name|pid>"
+            exit 1
+        fi
+        ssh -t "$HOST" "screen -S $2 -X quit"
         ;;
     hosts)
         load_hosts
         ;;
     *)
-        echo "Usage: sscreen <host> [connect|list|run]"
-        echo "       sscreen list             # list screens on all SSH hosts"
-        echo "       sscreen hosts           # show SSH config hosts"
+        echo "Usage: sscreen <host> [connect|attach|list|run|kill]"
+        echo "       sscreen <host> attach <screen>    # attach to specific screen"
+        echo "       sscreen <host> run <name> <cmd>  # start named screen with command"
+        echo "       sscreen <host> kill <screen>     # kill a screen"
+        echo "       sscreen list                      # list screens on all hosts"
+        echo "       sscreen hosts                     # show SSH config hosts"
         ;;
 esac
