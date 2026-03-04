@@ -1,0 +1,116 @@
+#!/bin/bash
+SSCREEN_COMPLETION='_sscreen_hosts() {
+    grep -i "^Host " "$HOME/.ssh/config" | awk '\''{print $2}'\'' | grep -v '\''*'\''
+}
+_sscreen() {
+    local cur prev
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    local actions="connect list run hosts"
+    if [[ $COMP_CWORD -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "$(_sscreen_hosts) ${actions}" -- "${cur}"))
+        return 0
+    fi
+    if [[ $COMP_CWORD -eq 2 ]]; then
+        case "${prev}" in
+            connect|c|list|l|run|r)
+                COMPREPLY=($(compgen -W "$(_sscreen_hosts)" -- "${cur}"))
+                return 0
+                ;;
+        esac
+    fi
+}
+complete -F _sscreen sscreen
+'
+SSH_CONFIG="$HOME/.ssh/config"
+load_hosts() {
+    grep -i "^Host " "$SSH_CONFIG" | awk '{print $2}' | grep -v '*'
+}
+get_host() {
+    local host="$1"
+    if [[ -f "$SSH_CONFIG" ]]; then
+        grep -qi "^Host $host$" "$SSH_CONFIG" && echo "$host"
+    fi
+}
+install_sscreen() {
+    mkdir -p ~/.local/bin
+    if ! grep -q '\.local/bin' ~/.bashrc 2>/dev/null; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    fi
+    ln -sf "$(pwd)/sscreen" ~/.local/bin/sscreen
+    mkdir -p ~/.local/share/bash-completion/completions
+    echo "$SSCREEN_COMPLETION" > ~/.local/share/bash-completion/completions/sscreen
+    echo "Installed! Run 'source ~/.bashrc' to enable tab completion."
+}
+ACTION=""
+HOST=""
+if [[ $# -eq 0 ]]; then
+    echo "Usage: sscreen <host> [connect|list|run]"
+    echo "       sscreen list             # list screens on all SSH hosts"
+    echo "       sscreen hosts           # show SSH config hosts"
+    echo "       sscreen --install       # install sscreen and completion"
+    exit 1
+fi
+if [[ $# -eq 1 ]]; then
+    case "$1" in
+        --install)
+            install_sscreen
+            exit 0
+            ;;
+        hosts)
+            load_hosts
+            exit 0
+            ;;
+        list)
+            echo "Listing screens on all SSH config hosts..."
+            for h in $(load_hosts); do
+                echo "=== $h ==="
+                ssh -t "$h" 'screen -ls' 2>/dev/null
+            done
+            exit 0
+            ;;
+    esac
+    HOST="$1"
+    ACTION="connect"
+else
+    ACTION="$2"
+    HOST="$1"
+fi
+case "$ACTION" in
+    c|connect)
+        if ! get_host "$HOST" >/dev/null; then
+            echo "Error: Host '$HOST' not found in $SSH_CONFIG"
+            exit 1
+        fi
+        ssh -t "$HOST" 'screen -Rd' 2>/dev/null || ssh -t "$HOST" 'screen -R'
+        ;;
+    l|list)
+        if ! get_host "$HOST" >/dev/null 2>&1; then
+            echo "Error: Host '$HOST' not found in $SSH_CONFIG"
+            exit 1
+        fi
+        ssh -t "$HOST" 'screen -ls'
+        ;;
+    r|run)
+        if ! get_host "$HOST" >/dev/null; then
+            echo "Error: Host '$HOST' not found in $SSH_CONFIG"
+            exit 1
+        fi
+        shift 2
+        if [[ $# -eq 0 ]]; then
+            echo "Error: 'run' requires a command argument"
+            echo "Usage: sscreen <host> run <command>"
+            exit 1
+        fi
+        ssh -t "$HOST" "screen -S main $*"
+        ;;
+    hosts)
+        load_hosts
+        ;;
+    *)
+        echo "Usage: sscreen <host> [connect|list|run]"
+        echo "       sscreen list             # list screens on all SSH hosts"
+        echo "       sscreen hosts           # show SSH config hosts"
+        ;;
+esac
