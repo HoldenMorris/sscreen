@@ -70,9 +70,9 @@ if [[ $# -eq 1 ]]; then
             ;;
         list)
             for h in $(load_hosts); do
-                output=$(timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o LogLevel=ERROR -t "$h" 'screen -ls' 2>&1)
+                output=$(timeout 8 ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectionAttempts=1 -t "$h" 'screen -ls' 2>&1)
                 ret=$?
-                if [[ $ret -eq 0 ]]; then
+                if [[ $ret -eq 0 ]] || [[ $ret -eq 1 ]] || [[ $ret -eq 124 ]]; then
                     clean_output=$(echo "$output" | tr -d '\r' | grep -v "Pseudo-terminal will not be allocated")
                     if echo "$clean_output" | grep -q "screens on"; then
                         echo "=== $h ==="
