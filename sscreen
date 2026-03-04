@@ -69,15 +69,26 @@ if [[ $# -eq 1 ]]; then
             exit 0
             ;;
         list)
-            for h in $(load_hosts); do
+            hosts=$(load_hosts)
+            total=$(echo "$hosts" | wc -l)
+            count=0
+            echo "Checking screens on $total hosts..."
+            for h in $hosts; do
+                count=$((count + 1))
+                echo -n "[$count/$total] $h... "
                 output=$(timeout 8 ssh -o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectionAttempts=1 -t "$h" 'screen -ls' 2>&1)
                 ret=$?
                 if [[ $ret -eq 0 ]] || [[ $ret -eq 1 ]] || [[ $ret -eq 124 ]]; then
                     clean_output=$(echo "$output" | tr -d '\r' | grep -v "Pseudo-terminal will not be allocated")
                     if echo "$clean_output" | grep -q "screens on"; then
+                        echo "FOUND"
                         echo "=== $h ==="
                         echo "$clean_output"
+                    else
+                        echo "ok"
                     fi
+                else
+                    echo "fail"
                 fi
             done
             exit 0
