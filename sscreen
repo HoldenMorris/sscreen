@@ -106,6 +106,7 @@ if ! get_host "$HOST" >/dev/null; then
     echo "Error: Host '$HOST' not found in $SSH_CONFIG"
     exit 1
 fi
+echo "Connecting to $HOST..."
 case "$ACTION" in
     attach|a)
         if [[ -z "$SCREEN_NAME" ]]; then
